@@ -458,7 +458,7 @@ bool App_GetFloat64(FmuInstance* instance, fmi3ValueReference valueReference, fm
         *value = instance->App->SimulationTime;
         return true;
     } else if (valueReference == FMU_VAR_BUS_ERROR_PROBABILITY) {
-        *value = instance->App->instance->App->BusErrorProbability;
+        *value = instance->App->BusErrorProbability;
         return true;
     }
 
