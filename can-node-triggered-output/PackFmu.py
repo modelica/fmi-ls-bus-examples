@@ -15,7 +15,6 @@ LS_BUS_HEADERS = [ 'fmi3LsBus.h', 'fmi3LsBusCan.h', 'fmi3LsBusUtil.h', 'fmi3LsBu
 
 def main():
     demo_dir = Path(__file__).parent
-    root_dir = Path(__file__).parent.parent.parent.parent
 
     with zipfile.ZipFile(FMU_PATH, 'w') as fmu:
         # Add LS-BUS headers from GitHub repository
@@ -34,7 +33,6 @@ def main():
         fmu.write(demo_dir / 'description' / 'fmi-ls-manifest.xml', 'extra/org.fmi-standard.fmi-ls-bus/fmi-ls-manifest.xml')
 
         # Add additional documentation files
-        fmu.write(root_dir / 'LICENSE.txt', 'documentation/licenses/LICENSE.txt')
         fmu.write(demo_dir / 'README.md', 'documentation/README.md')
 
 
