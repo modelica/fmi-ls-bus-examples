@@ -18,7 +18,6 @@ LS_BUS_HEADERS = [ 'fmi3LsBus.h', 'fmi3LsBusFlexRay.h', 'fmi3LsBusUtil.h', 'fmi3
 
 def main():
     demo_dir = Path(__file__).parent
-    root_dir = Path(__file__).parent.parent.parent.parent
 
     for fmu_dir_name, fmu_file_name in FMUS:
         fmu_dir = demo_dir / fmu_dir_name
@@ -40,7 +39,6 @@ def main():
             fmu.write(demo_dir / 'description' / 'fmi-ls-manifest.xml', 'extra/org.fmi-standard.fmi-ls-bus/fmi-ls-manifest.xml')
 
             # Add additional documentation files
-            fmu.write(root_dir / 'LICENSE.txt', 'documentation/licenses/LICENSE.txt')
             fmu.write(demo_dir / 'README.md', 'documentation/README.md')
 
 
