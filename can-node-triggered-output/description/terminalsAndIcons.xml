@@ -19,6 +19,9 @@
       <TerminalMemberVariable variableKind="signal"
                               variableName="CanChannel.Tx_Data"
                               memberName="Tx_Data" />
+      <Terminal terminalKind="org.fmi-ls-bus.network-terminal.configuration" name="Configuration" matchingRule="bus">
+        <TerminalMemberVariable variableKind="signal" variableName="BusNotifications" memberName="BusNotifications" />
+      </Terminal>
     </Terminal>
   </Terminals>
 </fmiTerminalsAndIcons>
