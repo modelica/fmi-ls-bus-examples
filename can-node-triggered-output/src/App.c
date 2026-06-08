@@ -124,43 +124,54 @@ void App_EvaluateDiscreteStates(FmuInstance* instance)
 }
 
 
-void App_UpdateDiscreteStates(FmuInstance* instance)
+static void App_ProcessRxBuffer(FmuInstance* instance)
 {
-    // We only process bus operations when the RX clock is set, otherwise the contents of the buffer are not well-defined
-    if (instance->App->RxClock == fmi3ClockActive)
+    if (instance->App->RxClock != fmi3ClockActive)
+        return;
+
+    // Read all bus operations from the RX buffer
+    fmi3LsBusOperationHeader* operation = NULL;
+    while (FMI3_LS_BUS_READ_NEXT_OPERATION(&instance->App->RxBufferInfo, operation))
     {
-        // Read all bus operations from the RX buffer
-        fmi3LsBusOperationHeader* operation = NULL;
-        while (FMI3_LS_BUS_READ_NEXT_OPERATION(&instance->App->RxBufferInfo, operation))
+        if (operation->opCode == FMI3_LS_BUS_CAN_OP_CAN_TRANSMIT)
         {
-            if (operation->opCode == FMI3_LS_BUS_CAN_OP_CAN_TRANSMIT)
-            {
-                const fmi3LsBusCanOperationCanTransmit* transmitOp = (fmi3LsBusCanOperationCanTransmit*)operation;
-                LogFmuMessage(instance, fmi3OK, "Info", "Received CAN frame with ID %u and length %u", transmitOp->id,
-                              transmitOp->dataLength);
-            }
-            else if (operation->opCode == FMI3_LS_BUS_CAN_OP_CONFIGURATION ||
-                     operation->opCode == FMI3_LS_BUS_CAN_OP_STATUS ||
-                     operation->opCode == FMI3_LS_BUS_CAN_OP_CONFIRM ||
-                     operation->opCode == FMI3_LS_BUS_CAN_OP_BUS_ERROR ||
-                     operation->opCode == FMI3_LS_BUS_CAN_OP_ARBITRATION_LOST)
-            {
-                // Ignore
-            }
-            else
-            {
-                LogFmuMessage(instance, fmi3OK, "Warning", "Received unknown bus operation");
-            }
+            const fmi3LsBusCanOperationCanTransmit* transmitOp = (fmi3LsBusCanOperationCanTransmit*)operation;
+            LogFmuMessage(instance, fmi3OK, "Info", "Received CAN frame with ID %u and length %u", transmitOp->id,
+                          transmitOp->dataLength);
+        }
+        else if (operation->opCode == FMI3_LS_BUS_CAN_OP_CONFIGURATION ||
+                 operation->opCode == FMI3_LS_BUS_CAN_OP_STATUS ||
+                 operation->opCode == FMI3_LS_BUS_CAN_OP_CONFIRM ||
+                 operation->opCode == FMI3_LS_BUS_CAN_OP_BUS_ERROR ||
+                 operation->opCode == FMI3_LS_BUS_CAN_OP_ARBITRATION_LOST)
+        {
+            // Ignore
+        }
+        else
+        {
+            LogFmuMessage(instance, fmi3OK, "Warning", "Received unknown bus operation");
         }
     }
+}
 
-    // Deactivate RX clock and clear RX buffer since all operations should have been processed
-    instance->App->RxClock = fmi3ClockInactive;
-    FMI3_LS_BUS_BUFFER_INFO_RESET(&instance->App->RxBufferInfo);
 
-    // Deactivate TX clock and clear TX buffer since both should have been retrieved by this time
-    instance->App->TxClock = fmi3ClockInactive;
-    FMI3_LS_BUS_BUFFER_INFO_RESET(&instance->App->TxBufferInfo);
+void App_UpdateDiscreteStates(FmuInstance* instance)
+{
+    if (instance->App->RxClock == fmi3ClockActive)
+    {
+        App_ProcessRxBuffer(instance);
+
+        // Deactivate RX clock and clear RX buffer since all operations should have been processed
+        instance->App->RxClock = fmi3ClockInactive;
+        FMI3_LS_BUS_BUFFER_INFO_RESET(&instance->App->RxBufferInfo);
+    }
+
+    if (instance->App->TxClock == fmi3ClockActive)
+    {
+        // Deactivate TX clock and clear TX buffer since both should have been retrieved by this time
+        instance->App->TxClock = fmi3ClockInactive;
+        FMI3_LS_BUS_BUFFER_INFO_RESET(&instance->App->TxBufferInfo);
+    }
 }
 
 
