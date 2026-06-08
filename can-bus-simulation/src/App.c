@@ -185,11 +185,15 @@ AppType* App_Instantiate(void)
 
         app->Nodes[i].TxClockQualifier = fmi3IntervalNotYetKnown;
 
+        app->Nodes[i].BaudRate = 0;  // 0 indicates that the node didn't send a baud-rate yet
+
         app->Nodes[i].ArbitrationLostBehavior =
             FMI3_LS_BUS_CAN_CONFIG_PARAM_ARBITRATION_LOST_BEHAVIOR_BUFFER_AND_RETRANSMIT;
     }
 
     app->SimulationTime = 0.0;
+    app->BusBaudRate = 0;        // 0 indicates that the bus is not yet configured
+
     return app;
 }
 
@@ -238,6 +242,7 @@ void App_EvaluateDiscreteStates(FmuInstance* instance)
     {
         return;
     }
+    int baud_rate_changed = 0;
 
     // Process received frames for each node
     for (NodeIdType i = 0; i < NumNodes; i++)
@@ -263,6 +268,7 @@ void App_EvaluateDiscreteStates(FmuInstance* instance)
                         LogFmuMessage(instance, fmi3OK, "Info",
                                       "Node %u configured baud rate %u", i + 1, configOp->baudrate);
                         instance->App->Nodes[i].BaudRate = configOp->baudrate;
+                        baud_rate_changed = 1;
                     }
                     else if (configOp->parameterType == FMI3_LS_BUS_CAN_CONFIG_PARAM_TYPE_ARBITRATION_LOST_BEHAVIOR)
                     {
@@ -286,25 +292,43 @@ void App_EvaluateDiscreteStates(FmuInstance* instance)
         }
     }
 
-    // Check baud rate configured by nodes and enable bus communication when configured correctly
-    if (instance->App->Nodes[0].BaudRate > 0 && instance->App->Nodes[1].BaudRate > 0)
+    // Check baud rate configured by nodes
+    if (baud_rate_changed)
     {
-        if (instance->App->Nodes[0].BaudRate == instance->App->Nodes[1].BaudRate)
+        if (instance->App->Nodes[0].BaudRate > 0 && instance->App->Nodes[1].BaudRate > 0)
+        {
+            if (instance->App->Nodes[0].BaudRate == instance->App->Nodes[1].BaudRate)
+            {
+                instance->App->BusBaudRate = instance->App->Nodes[0].BaudRate;
+                LogFmuMessage(instance, fmi3OK, "Info", "Node 1 and Node 2 have configured the baud rate (%u).",
+                              instance->App->BusBaudRate);
+            }
+            else
+            {
+                LogFmuMessage(instance, fmi3Warning, "Warning",
+                              "Nodes have configured differing baud rates, bus communication is disabled.");
+                instance->App->BusBaudRate = 0;
+            }
+        }
+        else if (instance->App->Nodes[0].BaudRate > 0)
         {
             instance->App->BusBaudRate = instance->App->Nodes[0].BaudRate;
+            LogFmuMessage(instance, fmi3OK, "Info", "Node 1 has configured the baud rate (%u).",
+                          instance->App->BusBaudRate);
         }
-        else
+        else if (instance->App->Nodes[1].BaudRate > 0)
         {
-            LogFmuMessage(instance, fmi3Warning, "Warning",
-                          "Nodes have configured differing baud rates, bus communication is disabled.");
-            instance->App->BusBaudRate = 0;
+            instance->App->BusBaudRate = instance->App->Nodes[1].BaudRate;
+            LogFmuMessage(instance, fmi3OK, "Info", "Node 2 has configured the baud rate (%u).",
+                          instance->App->BusBaudRate);
         }
     }
-    else
+    else if (instance->App->BusBaudRate == 0)
     {
+        instance->App->BusBaudRate = 200000;
         LogFmuMessage(instance, fmi3OK, "Info",
-                      "Not all nodes have configured a baud rate yet, bus communication is disabled.");
-        instance->App->BusBaudRate = 0;
+                      "No node has configured a baud rate, the bus baud rate is set to the default value (%u).",
+                      instance->App->BusBaudRate);
     }
 
     // Transmit frames
