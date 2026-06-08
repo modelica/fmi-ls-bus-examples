@@ -461,9 +461,7 @@ FMI3_Export fmi3Status fmi3GetIntervalFraction(fmi3Instance instance,
 
 FMI3_Export fmi3Status fmi3EvaluateDiscreteStates(fmi3Instance instance)
 {
-    App_EvaluateDiscreteStates(instance);
-
-    return fmi3OK;
+    return ERROR_NOT_SUPPORTED(instance);
 }
 
 FMI3_Export fmi3Status fmi3UpdateDiscreteStates(fmi3Instance instance,
