@@ -202,6 +202,13 @@ bool App_SetBinary(FmuInstance* instance, fmi3ValueReference valueReference, fmi
     if (valueReference == FMU_VAR_RX_DATA)
     {
         LogFmuMessage(instance, fmi3OK, "Trace", "Set RX buffer of %llu bytes", valueLength);
+
+        FmuState state = instance->State;
+        if ((state != FMU_STATE_EVENT_MODE || instance->App->RxClock != fmi3ClockActive) && state != FMU_STATE_INITIALIZATION_MODE) {
+            LogFmuMessage(instance, fmi3Error, "Error", "Setting clocked binary variable in current state is not allowed");
+            return false;
+        }
+
         FMI3_LS_BUS_BUFFER_WRITE(&instance->App->RxBufferInfo, value, valueLength);
         return true;
     }
@@ -214,6 +221,12 @@ bool App_GetBinary(FmuInstance* instance, fmi3ValueReference valueReference, fmi
 {
     if (valueReference == FMU_VAR_TX_DATA)
     {
+        FmuState state = instance->State;
+        if ((state != FMU_STATE_EVENT_MODE || instance->App->TxClock != fmi3ClockActive) && state != FMU_STATE_INITIALIZATION_MODE) {
+            LogFmuMessage(instance, fmi3Error, "Error", "Getting clocked binary variable in current state is not allowed");
+            return false;
+        }
+
         *value = FMI3_LS_BUS_BUFFER_START(&instance->App->TxBufferInfo);
         *valueLength = FMI3_LS_BUS_BUFFER_LENGTH(&instance->App->TxBufferInfo);
         LogFmuMessage(instance, fmi3OK, "Trace", "Get TX buffer of %llu bytes", *valueLength);
@@ -226,6 +239,12 @@ bool App_GetBinary(FmuInstance* instance, fmi3ValueReference valueReference, fmi
 
 bool App_SetClock(FmuInstance* instance, fmi3ValueReference valueReference, fmi3Clock value)
 {
+    FmuState state = instance->State;
+    if (state != FMU_STATE_EVENT_MODE) {
+        LogFmuMessage(instance, fmi3Error, "Error", "Setting clock variable in current state is not allowed");
+        return false;
+    }
+
     if (valueReference == FMU_VAR_RX_CLOCK)
     {
         LogFmuMessage(instance, fmi3OK, "Trace", "Set RX clock to %u", value);
@@ -239,6 +258,12 @@ bool App_SetClock(FmuInstance* instance, fmi3ValueReference valueReference, fmi3
 
 bool App_GetClock(FmuInstance* instance, fmi3ValueReference valueReference, fmi3Clock* value)
 {
+    FmuState state = instance->State;
+    if (state != FMU_STATE_EVENT_MODE) {
+        LogFmuMessage(instance, fmi3Error, "Error", "Getting clock variable in current state is not allowed");
+        return false;
+    }
+
     if (valueReference == FMU_VAR_TX_CLOCK)
     {
         LogFmuMessage(instance, fmi3OK, "Trace", "Get TX clock of %d", instance->App->TxClock);

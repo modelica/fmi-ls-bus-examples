@@ -476,6 +476,12 @@ bool App_SetBinary(FmuInstance* instance, fmi3ValueReference valueReference, fmi
 
     if (valueReference == FMU_VAR_NODE1_RX_DATA)
     {
+        FmuState state = instance->State;
+        if ((state != FMU_STATE_EVENT_MODE || instance->App->Nodes[0].RxClock != fmi3ClockActive) && state != FMU_STATE_INITIALIZATION_MODE) {
+            LogFmuMessage(instance, fmi3Error, "Error", "Setting clocked binary variable in current state is not allowed");
+            return false;
+        }
+
         LogFmuMessage(instance, fmi3OK, "Trace", "Set node 1 RX buffer of %llu bytes", valueLength);
         FMI3_LS_BUS_BUFFER_WRITE(&instance->App->Nodes[0].RxBufferInfo, value, valueLength);
         return true;
@@ -483,6 +489,12 @@ bool App_SetBinary(FmuInstance* instance, fmi3ValueReference valueReference, fmi
 
     if (valueReference == FMU_VAR_NODE2_RX_DATA)
     {
+        FmuState state = instance->State;
+        if ((state != FMU_STATE_EVENT_MODE || instance->App->Nodes[1].RxClock != fmi3ClockActive) && state != FMU_STATE_INITIALIZATION_MODE) {
+            LogFmuMessage(instance, fmi3Error, "Error", "Setting clocked binary variable in current state is not allowed");
+            return false;
+        }
+
         LogFmuMessage(instance, fmi3OK, "Trace", "Set node 2 RX buffer of %llu bytes", valueLength);
         FMI3_LS_BUS_BUFFER_WRITE(&instance->App->Nodes[1].RxBufferInfo, value, valueLength);
         return true;
@@ -502,6 +514,12 @@ bool App_GetBinary(FmuInstance* instance, fmi3ValueReference valueReference, fmi
 
     if (valueReference == FMU_VAR_NODE1_TX_DATA)
     {
+        FmuState state = instance->State;
+        if ((state != FMU_STATE_EVENT_MODE || instance->App->Nodes[0].TxClock != fmi3ClockActive) && state != FMU_STATE_INITIALIZATION_MODE) {
+            LogFmuMessage(instance, fmi3Error, "Error", "Getting clocked binary variable in current state is not allowed");
+            return false;
+        }
+
         *value = FMI3_LS_BUS_BUFFER_START(&instance->App->Nodes[0].TxBufferInfo);
         *valueLength = FMI3_LS_BUS_BUFFER_LENGTH(&instance->App->Nodes[0].TxBufferInfo);
         LogFmuMessage(instance, fmi3OK, "Trace", "Get node 1 TX buffer of %llu bytes", *valueLength);
@@ -510,6 +528,12 @@ bool App_GetBinary(FmuInstance* instance, fmi3ValueReference valueReference, fmi
 
     if (valueReference == FMU_VAR_NODE2_TX_DATA)
     {
+        FmuState state = instance->State;
+        if ((state != FMU_STATE_EVENT_MODE || instance->App->Nodes[1].TxClock != fmi3ClockActive) && state != FMU_STATE_INITIALIZATION_MODE) {
+            LogFmuMessage(instance, fmi3Error, "Error", "Getting clocked binary variable in current state is not allowed");
+            return false;
+        }
+
         *value = FMI3_LS_BUS_BUFFER_START(&instance->App->Nodes[1].TxBufferInfo);
         *valueLength = FMI3_LS_BUS_BUFFER_LENGTH(&instance->App->Nodes[1].TxBufferInfo);
         LogFmuMessage(instance, fmi3OK, "Trace", "Get node 2 TX buffer of %llu bytes", *valueLength);
@@ -522,6 +546,12 @@ bool App_GetBinary(FmuInstance* instance, fmi3ValueReference valueReference, fmi
 
 bool App_SetClock(FmuInstance* instance, fmi3ValueReference valueReference, fmi3Clock value)
 {
+    FmuState state = instance->State;
+    if (state != FMU_STATE_EVENT_MODE) {
+        LogFmuMessage(instance, fmi3Error, "Error", "Setting clock variable in current state is not allowed");
+        return false;
+    }
+
     if (instance->App->DiscreteStatesEvaluated)
     {
         LogFmuMessage(instance, fmi3Error, "Error",
