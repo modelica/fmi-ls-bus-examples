@@ -15,7 +15,7 @@ LS_BUS_HEADERS = [ 'fmi3LsBus.h', 'fmi3LsBusFlexRay.h', 'fmi3LsBusUtil.h', 'fmi3
 
 def main():
     demo_dir = Path(__file__).parent
-    root_dir = Path(__file__).parent.parent.parent.parent
+    root_dir = Path(__file__).parent.parent
 
     with zipfile.ZipFile(FMU_PATH, 'w') as fmu:
         # Add LS-BUS headers from GitHub repository

@@ -18,7 +18,7 @@ LS_BUS_HEADERS = [ 'fmi3LsBus.h', 'fmi3LsBusFlexRay.h', 'fmi3LsBusUtil.h', 'fmi3
 
 def main():
     demo_dir = Path(__file__).parent
-    root_dir = Path(__file__).parent.parent.parent.parent
+    root_dir = Path(__file__).parent.parent
 
     for fmu_dir_name, fmu_file_name in FMUS:
         fmu_dir = demo_dir / fmu_dir_name
