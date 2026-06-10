@@ -185,11 +185,15 @@ AppType* App_Instantiate(void)
 
         app->Nodes[i].TxClockQualifier = fmi3IntervalNotYetKnown;
 
+        app->Nodes[i].BaudRate = 0;  // 0 indicates that the node didn't send a baud-rate yet
+
         app->Nodes[i].ArbitrationLostBehavior =
             FMI3_LS_BUS_CAN_CONFIG_PARAM_ARBITRATION_LOST_BEHAVIOR_BUFFER_AND_RETRANSMIT;
     }
 
     app->SimulationTime = 0.0;
+    app->BusBaudRate = 0;        // 0 indicates that the bus is not yet configured
+
     return app;
 }
 
@@ -234,10 +238,7 @@ static bool App_GetNextFrame(const FmuInstance* instance, const FrameQueueEntry*
 
 void App_EvaluateDiscreteStates(FmuInstance* instance)
 {
-    if (instance->App->DiscreteStatesEvaluated)
-    {
-        return;
-    }
+    int baud_rate_changed = 0;
 
     // Process received frames for each node
     for (NodeIdType i = 0; i < NumNodes; i++)
@@ -263,6 +264,7 @@ void App_EvaluateDiscreteStates(FmuInstance* instance)
                         LogFmuMessage(instance, fmi3OK, "Info",
                                       "Node %u configured baud rate %u", i + 1, configOp->baudrate);
                         instance->App->Nodes[i].BaudRate = configOp->baudrate;
+                        baud_rate_changed = 1;
                     }
                     else if (configOp->parameterType == FMI3_LS_BUS_CAN_CONFIG_PARAM_TYPE_ARBITRATION_LOST_BEHAVIOR)
                     {
@@ -280,31 +282,46 @@ void App_EvaluateDiscreteStates(FmuInstance* instance)
                 }
             }
 
-            // Deactivate RX clock and clear RX buffer since all operations should have been processed
-            instance->App->Nodes[i].RxClock = fmi3ClockInactive;
-            FMI3_LS_BUS_BUFFER_INFO_RESET(&instance->App->Nodes[i].RxBufferInfo);
         }
     }
 
-    // Check baud rate configured by nodes and enable bus communication when configured correctly
-    if (instance->App->Nodes[0].BaudRate > 0 && instance->App->Nodes[1].BaudRate > 0)
+    // Check baud rate configured by nodes
+    if (baud_rate_changed)
     {
-        if (instance->App->Nodes[0].BaudRate == instance->App->Nodes[1].BaudRate)
+        if (instance->App->Nodes[0].BaudRate > 0 && instance->App->Nodes[1].BaudRate > 0)
+        {
+            if (instance->App->Nodes[0].BaudRate == instance->App->Nodes[1].BaudRate)
+            {
+                instance->App->BusBaudRate = instance->App->Nodes[0].BaudRate;
+                LogFmuMessage(instance, fmi3OK, "Info", "Node 1 and Node 2 have configured the baud rate (%u).",
+                              instance->App->BusBaudRate);
+            }
+            else
+            {
+                LogFmuMessage(instance, fmi3Warning, "Warning",
+                              "Nodes have configured differing baud rates, bus communication is disabled.");
+                instance->App->BusBaudRate = 0;
+            }
+        }
+        else if (instance->App->Nodes[0].BaudRate > 0)
         {
             instance->App->BusBaudRate = instance->App->Nodes[0].BaudRate;
+            LogFmuMessage(instance, fmi3OK, "Info", "Node 1 has configured the baud rate (%u).",
+                          instance->App->BusBaudRate);
         }
-        else
+        else if (instance->App->Nodes[1].BaudRate > 0)
         {
-            LogFmuMessage(instance, fmi3Warning, "Warning",
-                          "Nodes have configured differing baud rates, bus communication is disabled.");
-            instance->App->BusBaudRate = 0;
+            instance->App->BusBaudRate = instance->App->Nodes[1].BaudRate;
+            LogFmuMessage(instance, fmi3OK, "Info", "Node 2 has configured the baud rate (%u).",
+                          instance->App->BusBaudRate);
         }
     }
-    else
+    else if (instance->App->BusBaudRate == 0)
     {
+        instance->App->BusBaudRate = 200000;
         LogFmuMessage(instance, fmi3OK, "Info",
-                      "Not all nodes have configured a baud rate yet, bus communication is disabled.");
-        instance->App->BusBaudRate = 0;
+                      "No node has configured a baud rate, the bus baud rate is set to the default value (%u).",
+                      instance->App->BusBaudRate);
     }
 
     // Transmit frames
@@ -393,7 +410,7 @@ void App_EvaluateDiscreteStates(FmuInstance* instance)
         NodeIdType nextFrameOriginator;
         if (App_GetNextFrame(instance, &nextFrame, &nextFrameOriginator))
         {
-            // Set the TxClock interval based on the transmission time of the frame to simulate transmission timing behaviour. 
+            // Set the TxClock interval based on the transmission time of the frame to simulate transmission timing behaviour.
             instance->App->Nodes[0].TxClockQualifier = fmi3IntervalChanged;
             instance->App->Nodes[1].TxClockQualifier = fmi3IntervalChanged;
             instance->App->TxClockCounter = 44 + nextFrame->DataLength; /* The value 44 represents the constant length (in bits) of a CAN frame in addition to the variable length (in bits) of the data */
@@ -408,22 +425,25 @@ void App_EvaluateDiscreteStates(FmuInstance* instance)
 
 void App_UpdateDiscreteStates(FmuInstance* instance)
 {
-    if ((instance->App->Nodes[0].TxClock == fmi3ClockActive || instance->App->Nodes[1].TxClock == fmi3ClockActive) &&
-        !instance->App->DiscreteStatesEvaluated)
-    {
-        LogFmuMessage(instance, fmi3Warning, "Warning",
-                      "Discrete states should have been evaluated as part of fmi3EvaluateDiscreteStates or fmi3GetBinary");
-    }
-    else if (!instance->App->DiscreteStatesEvaluated)
+    if (!instance->App->DiscreteStatesEvaluated)
     {
         App_EvaluateDiscreteStates(instance);
     }
 
-    // Deactivate all TX clocks and clear TX buffers
-    instance->App->Nodes[0].TxClock = fmi3ClockInactive;
-    FMI3_LS_BUS_BUFFER_INFO_RESET(&instance->App->Nodes[0].TxBufferInfo);
-    instance->App->Nodes[1].TxClock = fmi3ClockInactive;
-    FMI3_LS_BUS_BUFFER_INFO_RESET(&instance->App->Nodes[1].TxBufferInfo);
+    // Deactivate clocks and clear buffers for nodes whose clocks were active
+    for (NodeIdType i = 0; i < NumNodes; i++)
+    {
+        if (instance->App->Nodes[i].RxClock == fmi3ClockActive)
+        {
+            instance->App->Nodes[i].RxClock = fmi3ClockInactive;
+            FMI3_LS_BUS_BUFFER_INFO_RESET(&instance->App->Nodes[i].RxBufferInfo);
+        }
+        if (instance->App->Nodes[i].TxClock == fmi3ClockActive)
+        {
+            instance->App->Nodes[i].TxClock = fmi3ClockInactive;
+            FMI3_LS_BUS_BUFFER_INFO_RESET(&instance->App->Nodes[i].TxBufferInfo);
+        }
+    }
 
     instance->App->DiscreteStatesEvaluated = false;
 }
@@ -467,24 +487,31 @@ bool App_GetFloat64(FmuInstance* instance, fmi3ValueReference valueReference, fm
 
 bool App_SetBinary(FmuInstance* instance, fmi3ValueReference valueReference, fmi3Binary value, size_t valueLength)
 {
-    if (instance->App->DiscreteStatesEvaluated)
-    {
-        LogFmuMessage(instance, fmi3Error, "Error",
-                      "Discrete states have already been evaluated, cannot set input variable");
-        return false;
-    }
-
     if (valueReference == FMU_VAR_NODE1_RX_DATA)
     {
+        FmuState state = instance->State;
+        if ((state != FMU_STATE_EVENT_MODE || instance->App->Nodes[0].RxClock != fmi3ClockActive) && state != FMU_STATE_INITIALIZATION_MODE) {
+            LogFmuMessage(instance, fmi3Error, "Error", "Setting clocked binary variable in current state is not allowed");
+            return false;
+        }
+
         LogFmuMessage(instance, fmi3OK, "Trace", "Set node 1 RX buffer of %llu bytes", valueLength);
         FMI3_LS_BUS_BUFFER_WRITE(&instance->App->Nodes[0].RxBufferInfo, value, valueLength);
+        instance->App->DiscreteStatesEvaluated = false;
         return true;
     }
 
     if (valueReference == FMU_VAR_NODE2_RX_DATA)
     {
+        FmuState state = instance->State;
+        if ((state != FMU_STATE_EVENT_MODE || instance->App->Nodes[1].RxClock != fmi3ClockActive) && state != FMU_STATE_INITIALIZATION_MODE) {
+            LogFmuMessage(instance, fmi3Error, "Error", "Setting clocked binary variable in current state is not allowed");
+            return false;
+        }
+
         LogFmuMessage(instance, fmi3OK, "Trace", "Set node 2 RX buffer of %llu bytes", valueLength);
         FMI3_LS_BUS_BUFFER_WRITE(&instance->App->Nodes[1].RxBufferInfo, value, valueLength);
+        instance->App->DiscreteStatesEvaluated = false;
         return true;
     }
 
@@ -502,6 +529,12 @@ bool App_GetBinary(FmuInstance* instance, fmi3ValueReference valueReference, fmi
 
     if (valueReference == FMU_VAR_NODE1_TX_DATA)
     {
+        FmuState state = instance->State;
+        if ((state != FMU_STATE_EVENT_MODE || instance->App->Nodes[0].TxClock != fmi3ClockActive) && state != FMU_STATE_INITIALIZATION_MODE) {
+            LogFmuMessage(instance, fmi3Error, "Error", "Getting clocked binary variable in current state is not allowed");
+            return false;
+        }
+
         *value = FMI3_LS_BUS_BUFFER_START(&instance->App->Nodes[0].TxBufferInfo);
         *valueLength = FMI3_LS_BUS_BUFFER_LENGTH(&instance->App->Nodes[0].TxBufferInfo);
         LogFmuMessage(instance, fmi3OK, "Trace", "Get node 1 TX buffer of %llu bytes", *valueLength);
@@ -510,6 +543,12 @@ bool App_GetBinary(FmuInstance* instance, fmi3ValueReference valueReference, fmi
 
     if (valueReference == FMU_VAR_NODE2_TX_DATA)
     {
+        FmuState state = instance->State;
+        if ((state != FMU_STATE_EVENT_MODE || instance->App->Nodes[1].TxClock != fmi3ClockActive) && state != FMU_STATE_INITIALIZATION_MODE) {
+            LogFmuMessage(instance, fmi3Error, "Error", "Getting clocked binary variable in current state is not allowed");
+            return false;
+        }
+
         *value = FMI3_LS_BUS_BUFFER_START(&instance->App->Nodes[1].TxBufferInfo);
         *valueLength = FMI3_LS_BUS_BUFFER_LENGTH(&instance->App->Nodes[1].TxBufferInfo);
         LogFmuMessage(instance, fmi3OK, "Trace", "Get node 2 TX buffer of %llu bytes", *valueLength);
@@ -522,11 +561,17 @@ bool App_GetBinary(FmuInstance* instance, fmi3ValueReference valueReference, fmi
 
 bool App_SetClock(FmuInstance* instance, fmi3ValueReference valueReference, fmi3Clock value)
 {
+    FmuState state = instance->State;
+    if (state != FMU_STATE_EVENT_MODE) {
+        LogFmuMessage(instance, fmi3Error, "Error", "Setting clock variable in current state is not allowed");
+        return false;
+    }
+
     if (instance->App->DiscreteStatesEvaluated)
     {
-        LogFmuMessage(instance, fmi3Error, "Error",
-                      "Discrete states have already been evaluated, cannot set input variable");
-        return false;
+        LogFmuMessage(instance, fmi3OK, "Trace",
+                      "Inputs changed after evaluation, re-evaluation needed");
+        instance->App->DiscreteStatesEvaluated = false;
     }
 
     if (valueReference == FMU_VAR_NODE1_RX_CLOCK)

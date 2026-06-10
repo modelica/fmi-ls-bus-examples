@@ -7,6 +7,9 @@
 #include "Instance.h"
 #include "Logging.h"
 
+#if defined(_MSC_VER)
+    #define strdup _strdup
+#endif
 
 /**
  * Helper macros
@@ -90,7 +93,7 @@ FMI3_Export fmi3Instance fmi3InstantiateCoSimulation(fmi3String instanceName,
         return NULL;
     }
 
-    fmuInstance->InstanceName = _strdup(instanceName);
+    fmuInstance->InstanceName = instanceName ? strdup(instanceName) : NULL;
     fmuInstance->InstanceEnvironment = instanceEnvironment;
     fmuInstance->LogMessageCallback = NULL;
     fmuInstance->State = FMU_STATE_INSTANTIATED;
@@ -103,7 +106,7 @@ FMI3_Export fmi3Instance fmi3InstantiateCoSimulation(fmi3String instanceName,
     if (!eventModeUsed)
     {
         LogFmuMessage(fmuInstance, fmi3Error, "logStatusError",
-                      "Event mode is must be supported by the importer to use this FMU.");
+                      "Event mode must be supported by the importer to use this FMU.");
         free(fmuInstance);
         return NULL;
     }

@@ -22,7 +22,6 @@ typedef enum
 } FmuVariables;
 
 
-static const fmi3Float64 TransmitInterval = 0.3;
 
 
 /**
@@ -37,9 +36,15 @@ struct AppType
     fmi3Byte TxBuffer[2048];
     fmi3LsBusUtilBufferInfo TxBufferInfo;
     fmi3Clock TxClock;
+    fmi3IntervalQualifier TxClockQualifier;
+
+    fmi3UInt64 TxClockCounter;
+    fmi3UInt64 TxClockResolution;
 
     fmi3Float64 NextTransmitTime;
     fmi3Float64 SimulationTime;
+
+    fmi3Float64 TransmitInterval;
 };
 
 
@@ -62,9 +67,18 @@ AppType* App_Instantiate(void)
         FMI3_LS_BUS_CAN_CONFIG_PARAM_ARBITRATION_LOST_BEHAVIOR_BUFFER_AND_RETRANSMIT);
     app->TxClock = fmi3ClockActive;
 
-    // Schedule next transmission
-    app->NextTransmitTime = TransmitInterval;
     app->SimulationTime = 0.0;
+
+    // Schedule next transmission
+
+    app->TxClockQualifier = fmi3IntervalChanged;
+    app->TxClockCounter = 3;
+    app->TxClockResolution = 10;
+
+    app->TransmitInterval =  (fmi3Float64) app->TxClockCounter / app->TxClockResolution;
+
+    app->NextTransmitTime = app->SimulationTime + app->TransmitInterval;
+
     return app;
 }
 
@@ -77,43 +91,7 @@ void App_Free(AppType* instance)
 
 bool App_DoStep(FmuInstance* instance, fmi3Float64 currentTime, fmi3Float64 targetTime)
 {
-    instance->App->SimulationTime = currentTime;
-
-    // Send transmit operations with the given interval until we reach the target time
-    while (instance->App->NextTransmitTime <= targetTime)
-    {
-        instance->App->SimulationTime = instance->App->NextTransmitTime;
-
-        // We are transmitting with a constant CAN ID and payload
-        const fmi3LsBusCanId id = 0x1;
-        const fmi3Byte data[4] = {1, 2, 3, 4};
-
-        LogFmuMessage(instance, fmi3OK, "Info", "Transmitting CAN frame with ID %u at internal time %f", id,
-                      instance->App->NextTransmitTime);
-
-        // Create a CAN transmit operation
-        FMI3_LS_BUS_CAN_CREATE_OP_CAN_TRANSMIT(&instance->App->TxBufferInfo, id, FMI3_LS_BUS_FALSE, FMI3_LS_BUS_FALSE, sizeof data, data);
-
-        // Check that operation was created successfully
-        if (!instance->App->TxBufferInfo.status)
-        {
-            LogFmuMessage(instance, fmi3Warning, "Warning", "Failed to transmit CAN frame: Insufficient buffer space");
-            break;
-        }
-
-        // Schedule next transmission
-        instance->App->NextTransmitTime = instance->App->NextTransmitTime + TransmitInterval;
-    }
-
-     instance->App->SimulationTime = targetTime;
-
-    // If we create bus transmit operations, we have to enter event mode and set the TX clock after this step
-    if (FMI3_LS_BUS_BUFFER_LENGTH(&instance->App->TxBufferInfo) > 0)
-    {
-        instance->App->TxClock = fmi3ClockActive;
-        return true;
-    }
-
+    instance->App->SimulationTime = targetTime;
     return false;
 }
 
@@ -155,6 +133,25 @@ static void App_ProcessRxBuffer(FmuInstance* instance)
 }
 
 
+static void App_PrepareTxBuffer(FmuInstance* instance)
+{
+    if (instance->App->TxClock != fmi3ClockActive)
+        return;
+
+    const fmi3LsBusCanId id = 0x1;
+    const fmi3Byte data[4] = {1, 2, 3, 4};
+
+    LogFmuMessage(instance, fmi3OK, "Info", "Transmitting CAN frame with ID %u", id);
+
+    FMI3_LS_BUS_CAN_CREATE_OP_CAN_TRANSMIT(&instance->App->TxBufferInfo, id, FMI3_LS_BUS_FALSE, FMI3_LS_BUS_FALSE, sizeof data, data);
+
+    if (!instance->App->TxBufferInfo.status)
+    {
+        LogFmuMessage(instance, fmi3Warning, "Warning", "Failed to transmit CAN frame: Insufficient buffer space");
+    }
+}
+
+
 void App_UpdateDiscreteStates(FmuInstance* instance)
 {
     if (instance->App->RxClock == fmi3ClockActive)
@@ -168,6 +165,9 @@ void App_UpdateDiscreteStates(FmuInstance* instance)
 
     if (instance->App->TxClock == fmi3ClockActive)
     {
+        instance->App->TxClockQualifier = fmi3IntervalChanged;
+        instance->App->NextTransmitTime = instance->App->NextTransmitTime + instance->App->TransmitInterval;
+
         // Deactivate TX clock and clear TX buffer since both should have been retrieved by this time
         instance->App->TxClock = fmi3ClockInactive;
         FMI3_LS_BUS_BUFFER_INFO_RESET(&instance->App->TxBufferInfo);
@@ -227,7 +227,6 @@ bool App_SetBinary(FmuInstance* instance, fmi3ValueReference valueReference, fmi
     return false;
 }
 
-
 bool App_GetBinary(FmuInstance* instance, fmi3ValueReference valueReference, fmi3Binary* value, size_t* valueLength)
 {
     if (valueReference == FMU_VAR_TX_DATA)
@@ -237,6 +236,9 @@ bool App_GetBinary(FmuInstance* instance, fmi3ValueReference valueReference, fmi
             LogFmuMessage(instance, fmi3Error, "Error", "Getting clocked binary variable in current state is not allowed");
             return false;
         }
+
+        // Build the CAN transmit frame on-demand
+        App_PrepareTxBuffer(instance);
 
         *value = FMI3_LS_BUS_BUFFER_START(&instance->App->TxBufferInfo);
         *valueLength = FMI3_LS_BUS_BUFFER_LENGTH(&instance->App->TxBufferInfo);
@@ -260,6 +262,14 @@ bool App_SetClock(FmuInstance* instance, fmi3ValueReference valueReference, fmi3
     {
         LogFmuMessage(instance, fmi3OK, "Trace", "Set RX clock to %u", value);
         instance->App->RxClock = value;
+
+        return true;
+    }
+    else if (valueReference == FMU_VAR_TX_CLOCK)
+    {
+        LogFmuMessage(instance, fmi3OK, "Trace", "Set TX clock to %d", value);
+        instance->App->TxClock = value;
+
         return true;
     }
 
@@ -269,23 +279,6 @@ bool App_SetClock(FmuInstance* instance, fmi3ValueReference valueReference, fmi3
 
 bool App_GetClock(FmuInstance* instance, fmi3ValueReference valueReference, fmi3Clock* value)
 {
-    FmuState state = instance->State;
-    if (state != FMU_STATE_EVENT_MODE) {
-        LogFmuMessage(instance, fmi3Error, "Error", "Getting clock variable in current state is not allowed");
-        return false;
-    }
-
-    if (valueReference == FMU_VAR_TX_CLOCK)
-    {
-        LogFmuMessage(instance, fmi3OK, "Trace", "Get TX clock of %d", instance->App->TxClock);
-        *value = instance->App->TxClock;
-
-        // Reset clock since GetClock may only return fmi3ClockActive once per activation
-        instance->App->TxClock = fmi3ClockInactive;
-
-        return true;
-    }
-
     return false;
 }
 
@@ -296,10 +289,17 @@ bool App_GetIntervalFraction(FmuInstance* instance,
                              fmi3UInt64* resolution,
                              fmi3IntervalQualifier* qualifier)
 {
-    (void)instance;
-    (void)valueReference;
-    (void)counter;
-    (void)resolution;
-    (void)qualifier;
+    if (valueReference == FMU_VAR_TX_CLOCK)
+    {
+        *qualifier = instance->App->TxClockQualifier;
+        if (instance->App->TxClockQualifier == fmi3IntervalChanged)
+        {
+            *counter = instance->App->TxClockCounter;
+            *resolution = instance->App->TxClockResolution;
+            instance->App->TxClockQualifier = fmi3IntervalUnchanged;
+        }
+        return true;
+    }
+
     return false;
 }

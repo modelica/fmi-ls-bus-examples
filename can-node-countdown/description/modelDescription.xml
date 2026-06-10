@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <fmiModelDescription
     fmiVersion="3.0"
-    modelName="DemoCanBusSimulation"
+    modelName="DemoCanNodeCountdown"
     instantiationToken=""
     variableNamingConvention="structured"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:noNamespaceSchemaLocation="https://raw.githubusercontent.com/modelica/fmi-standard/v3.0.1/schema/fmi3ModelDescription.xsd">
 
   <CoSimulation
-      modelIdentifier="DemoCanBusSimulation"
+      modelIdentifier="DemoCanNodeCountdown"
       needsExecutionTool="false"
       canGetAndSetFMUState="false"
       canSerializeFMUState="false"
@@ -16,7 +16,6 @@
       canBeInstantiatedOnlyOncePerProcess="false"
       providesIntermediateUpdate="false"
       canReturnEarlyAfterIntermediateUpdate="false"
-      providesEvaluateDiscreteStates="true"
       hasEventMode="true">
   </CoSimulation>
 
@@ -43,7 +42,7 @@
   <ModelVariables>
     <Float64 name="time" valueReference="1024" causality="independent" variability="continuous" description="Simulation time" />
 
-    <Binary name="Node1.Rx_Data"
+    <Binary name="CanChannel.Rx_Data"
         valueReference="0"
         causality="input"
         variability="discrete"
@@ -54,7 +53,7 @@
         <Start value="" />
     </Binary>
 
-    <Binary name="Node1.Tx_Data"
+    <Binary name="CanChannel.Tx_Data"
         valueReference="1"
         causality="output"
         variability="discrete"
@@ -64,38 +63,13 @@
         mimeType="application/org.fmi-standard.fmi-ls-bus.can; version=&quot;1.0.0&quot;">
     </Binary>
 
-    <Clock name="Node1.Rx_Clock" valueReference="2" causality="input" intervalVariability="triggered" />
-    <Clock name="Node1.Tx_Clock" valueReference="3" causality="input" intervalVariability="countdown" />
+    <Clock name="CanChannel.Rx_Clock" valueReference="2" causality="input" intervalVariability="triggered" />
+    <Clock name="CanChannel.Tx_Clock" valueReference="3" causality="input" intervalVariability="countdown" />
 
-    <Binary name="Node2.Rx_Data"
-            valueReference="4"
-            causality="input"
-            variability="discrete"
-            initial="exact"
-            maxSize="2048"
-            clocks="6"
-            mimeType="application/org.fmi-standard.fmi-ls-bus.can; version=&quot;1.0.0&quot;">
-      <Start value="" />
-    </Binary>
-
-    <Binary name="Node2.Tx_Data"
-            valueReference="5"
-            causality="output"
-            variability="discrete"
-            initial="calculated"
-            maxSize="2048"
-            clocks="7"
-            mimeType="application/org.fmi-standard.fmi-ls-bus.can; version=&quot;1.0.0&quot;">
-    </Binary>
-
-    <Clock name="Node2.Rx_Clock" valueReference="6" causality="input" intervalVariability="triggered" />
-    <Clock name="Node2.Tx_Clock" valueReference="7" causality="input" intervalVariability="countdown" />
-
-    <Float64 name="BusErrorProbability" valueReference="255" causality="input" variability="discrete" start="0.0" />
+    <Boolean name="BusNotifications" valueReference="128" causality="parameter" variability="fixed" start="false" />
   </ModelVariables>
 
   <ModelStructure>
-    <Output valueReference="1" dependencies="0 3 4 255" />
-    <Output valueReference="5" dependencies="0 4 7 255" />
+    <Output valueReference="1" dependencies="3" />
   </ModelStructure>
 </fmiModelDescription>
