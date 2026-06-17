@@ -412,7 +412,7 @@ FMI3_Export fmi3Status fmi3GetIntervalDecimal(fmi3Instance instance,
     for (size_t i = 0; i < nValueReferences; i++)
     {
         fmi3UInt64 counter;
-        fmi3UInt64 resolution;
+        fmi3UInt64 resolution = 0;
         if (!App_GetIntervalFraction(fmuInstance, valueReferences[i], &counter, &resolution, &qualifiers[i]))
         {
             TerminateWithError(instance, "fmi3GetIntervalFraction: Invalid call with value reference %u",
