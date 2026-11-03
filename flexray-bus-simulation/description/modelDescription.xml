@@ -102,6 +102,10 @@
 
   <ModelStructure>
     <Output valueReference="1" />
-    <Output valueReference="3" />
+    <Output valueReference="5" />
+    <Output valueReference="10" />
+    <Output valueReference="11" />
+    <Output valueReference="12" />
+    <Output valueReference="13" />
   </ModelStructure>
 </fmiModelDescription>

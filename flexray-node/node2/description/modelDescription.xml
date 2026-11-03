@@ -76,6 +76,5 @@
 
   <ModelStructure>
     <Output valueReference="1" />
-    <Output valueReference="3" />
   </ModelStructure>
 </fmiModelDescription>
