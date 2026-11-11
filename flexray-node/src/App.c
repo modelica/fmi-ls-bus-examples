@@ -845,6 +845,8 @@ bool App_DoStep(FmuInstance* instance, fmi3Float64 currentTime, fmi3Float64 targ
 
 void App_EvaluateDiscreteStates(FmuInstance* instance)
 {
+    instance->App->DiscreteStatesEvaluated = fmi3True;
+
     if (TxClockType == FMU_CLOCK_TYPE_TRIGGERED)
     {
         const bool messagesAvailable = !FMI3_LS_BUS_BUFFER_IS_EMPTY(&instance->App->TxBufferInfo);
@@ -875,6 +877,13 @@ void App_EvaluateDiscreteStates(FmuInstance* instance)
 
 void App_UpdateDiscreteStates(FmuInstance* instance)
 {
+    // FMI 3.0: the discrete states are computed here, if the importer did not ask for it during this time instant
+    if (!instance->App->DiscreteStatesEvaluated)
+    {
+        App_EvaluateDiscreteStates(instance);
+    }
+    instance->App->DiscreteStatesEvaluated = fmi3False;
+
     if (instance->App->TxClock == fmi3ClockActive)
     {
         // Invalidate the currently configured clock interval
