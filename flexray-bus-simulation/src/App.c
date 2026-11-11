@@ -488,6 +488,8 @@ bool App_DoStep(FmuInstance* instance, fmi3Float64 currentTime, fmi3Float64 targ
 
 void App_EvaluateDiscreteStates(FmuInstance* instance)
 {
+    instance->App->DiscreteStatesEvaluated = fmi3True;
+
     for (fmi3UInt32 nodeId = 0; nodeId < NUM_NODES; nodeId++)
     {
         NodeData* nodeData = &instance->App->Node[nodeId];
@@ -523,6 +525,13 @@ void App_EvaluateDiscreteStates(FmuInstance* instance)
 
 void App_UpdateDiscreteStates(FmuInstance* instance)
 {
+    // FMI 3.0: the discrete states are computed here, if the importer did not ask for it during this time instant
+    if (!instance->App->DiscreteStatesEvaluated)
+    {
+        App_EvaluateDiscreteStates(instance);
+    }
+    instance->App->DiscreteStatesEvaluated = fmi3False;
+
     for (fmi3UInt32 nodeId = 0; nodeId < NUM_NODES; nodeId++)
     {
         NodeData* nodeData = &instance->App->Node[nodeId];
